@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import os
 import stat
+import uuid
 from multiprocessing import Pool
 
 import magic
@@ -17,9 +18,12 @@ import api.models.album_thing
 import api.util as util
 import ownphotos.settings
 from api.batch_jobs import create_batch_job
+from api.face_classify import cluster_all_faces
 from api.models import Face, LongRunningJob, Photo
 from api.places365.places365 import place365_instance
 from api.thumbnails import isRawPicture
+
+AUTO_FACE_RETRAIN_THRESHOLD = 0.1
 
 
 def is_video(image_path):
@@ -117,7 +121,7 @@ def handle_new_image(user, image_path, job_id):
             elapsed_times["md5"] = elapsed
 
             if not Photo.objects.filter(Q(image_hash=image_hash)).exists():
-                photo = Photo()
+                photo: Photo = Photo()
                 photo.image_paths.append(img_abs_path)
                 photo.owner = user
                 photo.image_hash = image_hash
@@ -317,7 +321,7 @@ def initialize_scan_process(*args, **kwargs):
 
 
 @job
-def scan_photos(user, full_scan, job_id):
+def scan_photos(user, full_scan, job_id, scan_directory):
     if not os.path.exists(
         os.path.join(ownphotos.settings.MEDIA_ROOT, "thumbnails_big")
     ):
@@ -340,7 +344,7 @@ def scan_photos(user, full_scan, job_id):
 
     try:
         photo_list = []
-        walk_directory(user.scan_directory, photo_list)
+        walk_directory(scan_directory, photo_list)
         files_found = len(photo_list)
         last_scan = (
             LongRunningJob.objects.filter(finished=True)
@@ -377,9 +381,7 @@ def scan_photos(user, full_scan, job_id):
             pool.starmap(photo_scanner, all)
 
         place365_instance.unload()
-        util.logger.info(
-            "Scanned {} files in : {}".format(files_found, user.scan_directory)
-        )
+        util.logger.info("Scanned {} files in : {}".format(files_found, scan_directory))
         api.models.album_thing.update()
         util.logger.info("Finished updating album things")
         exisisting_photos = Photo.objects.filter(owner=user.id)
@@ -401,10 +403,13 @@ def scan_photos(user, full_scan, job_id):
     lrj.result["new_photo_count"] = added_photo_count
     lrj.save()
 
+    cluster_job_id = uuid.uuid4()
+    cluster_all_faces.delay(user, cluster_job_id)
+
     return {"new_photo_count": added_photo_count, "status": lrj.failed is False}
 
 
-def face_scanner(photo, job_id):
+def face_scanner(photo: Photo, job_id):
     photo._extract_faces()
     with db.connection.cursor() as cursor:
         cursor.execute(
@@ -447,8 +452,9 @@ def scan_faces(user, job_id):
         with Pool(processes=site_config.HEAVYWEIGHT_PROCESS) as pool:
             pool.starmap(face_scanner, all)
 
-    except Exception:
+    except Exception as err:
         util.logger.exception("An error occured: ")
+        print("[ERR]: {}".format(err))
         lrj.failed = True
 
     added_face_count = Face.objects.count() - face_count_before
@@ -458,5 +464,8 @@ def scan_faces(user, job_id):
     lrj.finished_at = datetime.datetime.now().replace(tzinfo=pytz.utc)
     lrj.result["new_face_count"] = added_face_count
     lrj.save()
+
+    cluster_job_id = uuid.uuid4()
+    cluster_all_faces.delay(user, cluster_job_id)
 
     return {"new_face_count": added_face_count, "status": lrj.failed is False}

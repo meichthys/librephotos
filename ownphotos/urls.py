@@ -36,6 +36,7 @@ from api.views import (
     photos,
     search,
     sharing,
+    timezone,
     upload,
     user,
     views,
@@ -218,6 +219,7 @@ urlpatterns = [
     url(r"^api/clusterfaces", dataviz.ClusterFaceView.as_view()),
     url(r"^api/socialgraph", dataviz.SocialGraphView.as_view()),
     url(r"^api/scanphotos", views.ScanPhotosView.as_view()),
+    url(r"^api/scanuploadedphotos", views.FullScanPhotosView.as_view()),
     url(r"^api/fullscanphotos", views.FullScanPhotosView.as_view()),
     url(r"^api/scanfaces", faces.ScanFacesView.as_view()),
     url(r"^api/deletemissingphotos", views.DeleteMissingPhotosView.as_view()),
@@ -245,6 +247,7 @@ urlpatterns = [
     url(r"^api/nextcloud/listdir", nextcloud_views.ListDir.as_view()),
     url(r"^api/nextcloud/scanphotos", nextcloud_views.ScanPhotosView.as_view()),
     url(r"^api/photos/download", views.ZipListPhotosView.as_view()),
+    url(r"^api/timezones", timezone.TimeZoneView.as_view()),
 ]
 urlpatterns += [url("api/django-rq/", include("django_rq.urls"))]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
