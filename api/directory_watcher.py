@@ -171,6 +171,14 @@ def handle_new_image(user, image_path, job_id):
                         job_id, img_abs_path, elapsed
                     )
                 )
+                photo._extract_exif_data(True)
+                elapsed = (datetime.datetime.now() - start).total_seconds()
+                util.logger.info(
+                    "job {}: extract exif data: {}, elapsed: {}".format(
+                        job_id, img_abs_path, elapsed
+                    )
+                )
+
                 photo._extract_rating(True)
                 elapsed = (datetime.datetime.now() - start).total_seconds()
                 util.logger.info(
@@ -234,6 +242,7 @@ def rescan_image(user, image_path, job_id):
             photo._generate_thumbnail(True)
             photo._calculate_aspect_ratio(False)
             photo._geolocate_mapbox(True)
+            photo._extract_exif_data(True)
             photo._extract_date_time_from_exif(True)
             photo._add_location_to_album_dates()
             photo._extract_rating(True)
@@ -321,7 +330,7 @@ def initialize_scan_process(*args, **kwargs):
 
 
 @job
-def scan_photos(user, full_scan, job_id, scan_directory):
+def scan_photos(user, full_scan, job_id, scan_directory=""):
     if not os.path.exists(
         os.path.join(ownphotos.settings.MEDIA_ROOT, "thumbnails_big")
     ):
@@ -343,6 +352,8 @@ def scan_photos(user, full_scan, job_id, scan_directory):
     photo_count_before = Photo.objects.count()
 
     try:
+        if scan_directory == "":
+            scan_directory = user.scan_directory
         photo_list = []
         walk_directory(scan_directory, photo_list)
         files_found = len(photo_list)
